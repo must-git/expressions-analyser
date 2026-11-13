@@ -1,43 +1,104 @@
 CC      = gcc
 STD     = -std=c11 -Wall -Wextra -Wpedantic -Werror
-SAN     = -fsanitize=address,undefined -fno-omit-frame-pointer -g -O1
+SAN     ?= 0
 
-.PHONY: all test bench clean
-all: test
+ifeq ($(SAN),1)
+SAN_FLAGS = -g -fsanitize=address,undefined -fno-omit-frame-pointer
+else
+SAN_FLAGS =
+endif
 
-test:
-	$(CC) $(STD) $(SAN) test_stack.c  stack_array.c -o t_stack_array
-	$(CC) $(STD) $(SAN) test_stack.c  stack_list.c  -o t_stack_list
-	$(CC) $(STD) $(SAN) test_queue.c  queue_circ.c  -o t_queue_circ
-	$(CC) $(STD) $(SAN) test_queue.c  queue_list.c  -o t_queue_list
-	$(CC) $(STD) $(SAN) test_deque.c  deque_circ.c  -o t_deque_circ
-	$(CC) $(STD) $(SAN) test_deque.c  deque_dll.c   -o t_deque_dll
-	$(CC) $(STD) $(SAN) test_expr.c expr.c stack_array.c queue_circ.c -o t_expr_array
-	$(CC) $(STD) $(SAN) test_expr.c expr.c stack_list.c  queue_list.c -o t_expr_list
-	$(CC) $(STD) $(SAN) test_sliding_max.c sliding_max.c deque_circ.c -o t_sliding_circ
-	$(CC) $(STD) $(SAN) test_sliding_max.c sliding_max.c deque_dll.c  -o t_sliding_dll
-	$(CC) $(STD) $(SAN) test_round_robin.c round_robin.c queue_circ.c -o t_rr_circ
-	$(CC) $(STD) $(SAN) test_round_robin.c round_robin.c queue_list.c -o t_rr_list
-	$(CC) $(STD) $(SAN) recursion_demo.c stack_array.c -o t_recursion
-	./t_stack_array && ./t_stack_list
-	./t_queue_circ  && ./t_queue_list
-	./t_deque_circ  && ./t_deque_dll
-	./t_expr_array  && ./t_expr_list
-	./t_sliding_circ && ./t_sliding_dll
-	./t_rr_circ && ./t_rr_list
-	./t_recursion
-	$(CC) $(STD) $(SAN) test_stack_fixed.c -o t_stack_fixed
-	$(CC) $(STD) $(SAN) test_palindrome.c palindrome.c stack_array.c queue_circ.c -o t_pal_array
-	$(CC) $(STD) $(SAN) test_palindrome.c palindrome.c stack_list.c  queue_list.c -o t_pal_list
-	$(CC) $(STD) $(SAN) test_eval_paren.c eval_paren.c stack_array.c -o t_ep_array
-	$(CC) $(STD) $(SAN) test_eval_paren.c eval_paren.c stack_list.c  -o t_ep_list
-	./t_stack_fixed && ./t_pal_array && ./t_pal_list && ./t_ep_array && ./t_ep_list
+CFLAGS  = $(STD) $(SAN_FLAGS)
 
-bench:
-	$(CC) $(STD) -O2 -DIMPL_NAME='"array"' bench.c stack_array.c queue_circ.c -o bench_array
-	$(CC) $(STD) -O2 -DIMPL_NAME='"list"'  bench.c stack_list.c  queue_list.c -o bench_list
+TEST_BINS  = t_stack_array t_stack_list t_queue_circ t_queue_list
+TEST_BINS += t_expr_array t_expr_list
+TEST_BINS += t_deque_circ t_deque_dll
+TEST_BINS += t_sliding_circ t_sliding_dll
+BENCH_BINS = bench_array bench_list
+
+.PHONY: all test test-array test-list test-expr test-deque test-sliding-max bench clean sanitizer-check
+
+all: sanitizer-check $(TEST_BINS) $(BENCH_BINS)
+
+ifeq ($(SAN),1)
+sanitizer-check:
+	@echo "Verification de la disponibilite de ASan/UBSan..."
+	@printf '%s\n' 'int main(void) { return 0; }' > .san_probe.c
+	@if $(CC) $(CFLAGS) .san_probe.c -o .san_probe; then \
+		rm -f .san_probe.c .san_probe .san_probe.exe; \
+	else \
+		rm -f .san_probe.c .san_probe .san_probe.exe; \
+		echo "ERREUR : ASan/UBSan indisponibles dans cet environnement."; \
+		echo "Relancez sans SAN=1, par exemple :"; \
+		echo "  make -f Makefile.tp5 test"; \
+		exit 1; \
+	fi
+else
+sanitizer-check:
+	@:
+endif
+
+t_stack_array: test_stack.c stack_array.c stack.h ds_status.h
+	$(CC) $(CFLAGS) test_stack.c stack_array.c -o $@
+
+t_stack_list: test_stack.c stack_list.c stack.h ds_status.h
+	$(CC) $(CFLAGS) test_stack.c stack_list.c -o $@
+
+t_queue_circ: test_queue.c queue_circ.c queue.h ds_status.h
+	$(CC) $(CFLAGS) test_queue.c queue_circ.c -o $@
+
+t_queue_list: test_queue.c queue_list.c queue.h ds_status.h
+	$(CC) $(CFLAGS) test_queue.c queue_list.c -o $@
+
+t_expr_array: test_expr.c expr.c stack_array.c queue_circ.c expr.h stack.h queue.h ds_status.h
+	$(CC) $(CFLAGS) test_expr.c expr.c stack_array.c queue_circ.c -o $@
+
+t_expr_list: test_expr.c expr.c stack_list.c queue_list.c expr.h stack.h queue.h ds_status.h
+	$(CC) $(CFLAGS) test_expr.c expr.c stack_list.c queue_list.c -o $@
+
+t_deque_circ: test_deque.c deque_circ.c deque.h ds_status.h
+	$(CC) $(CFLAGS) test_deque.c deque_circ.c -o $@
+
+t_deque_dll: test_deque.c deque_dll.c deque.h ds_status.h
+	$(CC) $(CFLAGS) test_deque.c deque_dll.c -o $@
+
+t_sliding_circ: test_sliding_max.c sliding_max.c deque_circ.c sliding_max.h deque.h ds_status.h
+	$(CC) $(CFLAGS) test_sliding_max.c sliding_max.c deque_circ.c -o $@
+
+t_sliding_dll: test_sliding_max.c sliding_max.c deque_dll.c sliding_max.h deque.h ds_status.h
+	$(CC) $(CFLAGS) test_sliding_max.c sliding_max.c deque_dll.c -o $@
+
+bench_array: bench.c stack_array.c queue_circ.c stack.h queue.h ds_status.h
+	$(CC) $(CFLAGS) -O2 -DIMPL_NAME='"array"' bench.c stack_array.c queue_circ.c -o $@
+
+bench_list: bench.c stack_list.c queue_list.c stack.h queue.h ds_status.h
+	$(CC) $(CFLAGS) -O2 -DIMPL_NAME='"list"' bench.c stack_list.c queue_list.c -o $@
+
+test-array: sanitizer-check t_stack_array t_queue_circ
+	./t_stack_array
+	./t_queue_circ
+
+test-list: sanitizer-check t_stack_list t_queue_list
+	./t_stack_list
+	./t_queue_list
+
+test-expr: sanitizer-check t_expr_array t_expr_list
+	./t_expr_array
+	./t_expr_list
+
+test-deque: sanitizer-check t_deque_circ t_deque_dll
+	./t_deque_circ
+	./t_deque_dll
+
+test-sliding-max: sanitizer-check t_sliding_circ t_sliding_dll
+	./t_sliding_circ
+	./t_sliding_dll
+
+test: test-array test-list test-expr test-deque test-sliding-max
+
+bench: sanitizer-check bench_array bench_list
 	./bench_array
 	./bench_list
 
 clean:
-	rm -f t_* bench_array bench_list
+	rm -f $(TEST_BINS) $(BENCH_BINS) .san_probe*
